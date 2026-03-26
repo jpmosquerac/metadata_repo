@@ -1,0 +1,43 @@
+services:
+
+  # ── Repositorio de Metadatos (PostgreSQL) ───────────────────
+  metadata_repo:
+    image: postgres:16-alpine
+    container_name: metadata_repo
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       metadata_repository
+      POSTGRES_USER:     admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5433:5432"           # acceso local en puerto 5433
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d metadata_repository"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── ETL (se ejecuta una vez y termina) ──────────────────────
+  etl:
+    build: .
+    container_name: metadata_etl
+    depends_on:
+      metadata_repo:
+        condition: service_healthy
+    environment:
+      REPO_HOST:         metadata_repo
+      REPO_PORT:         5432
+      REPO_DB:           metadata_repository
+      REPO_USER:         admin
+      REPO_PASSWORD:     admin123
+      DATA_SOURCES_DIR:  /app/data_sources
+    volumes:
+      - ./data_sources:/app/data_sources:ro   # monta los .sql como solo lectura
+    profiles:
+      - etl   # no se levanta con "docker compose up", solo con "docker compose run"
+
+volumes:
+  postgres_data:
